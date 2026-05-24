@@ -1,0 +1,85 @@
+stages:
+  - test
+  - build
+  - release
+  - deploy
+
+variables:
+  AWS_DEFAULT_REGION: us-east-1
+  IMAGE_NAME: devops-portfolio
+  DOCKER_TLS_CERTDIR: "/certs"
+
+cache:
+  key:
+    files:
+      - package-lock.json
+  paths:
+    - .npm/
+
+# ==========================================
+# Test Stage
+# ==========================================
+linting:
+  stage: test
+  image: node:20-alpine
+  before_script:
+    - npm ci --cache .npm --prefer-offline
+  script:
+    - npm run lint
+
+# ==========================================
+# Build Stage
+# ==========================================
+building:
+  stage: build
+  image: node:20-alpine
+  needs:
+    - linting
+  before_script:
+    - npm ci --cache .npm --prefer-offline
+  script:
+    - npm run build
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 week
+
+# ==========================================
+# Release (Docker Build & Push) Stage
+# ==========================================
+docker-release:
+  stage: release
+  image: docker:24.0.5
+  services:
+    - name: docker:24.0.5-dind
+      alias: docker
+  needs:
+    - building
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_VERIFY: 1
+    DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
+  before_script:
+    # Example registry login (GitLab container registry)
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+  script:
+    - docker build -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" -t "$CI_REGISTRY_IMAGE:latest" .
+    - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+    - docker push "$CI_REGISTRY_IMAGE:latest"
+  only:
+    - main
+
+# ==========================================
+# Deploy Stage
+# ==========================================
+deploy-to-aws:
+  stage: deploy
+  image: amazon/aws-cli:latest
+  needs:
+    - docker-release
+  script:
+    - echo "Deploying application to AWS ECS..."
+    # Configures ECS deployment
+    - aws ecs update-service --cluster portfolio-cluster --service portfolio-service --force-new-deployment
+  only:
+    - main
