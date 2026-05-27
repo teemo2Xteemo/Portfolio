@@ -1,7 +1,7 @@
 export const portfolioData = {
   personalInfo: {
     name: "DINH CONG DUYEN",
-    title: "Full Stack Developer",
+    title: "DevOps & Full Stack Developer",
     yoe: "~4 Years",
     dob: "2002 Oct 07",
     gender: "Male",
