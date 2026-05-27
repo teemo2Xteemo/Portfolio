@@ -33,7 +33,7 @@ export default function App() {
         />
       </main>
 
-      <footer className="footer">
+      {/* <footer className="footer">
         <div className="container" style={{ padding: "0 2rem" }}>
           <div className="footer-content">
             <span className="footer-text">
@@ -46,7 +46,7 @@ export default function App() {
             </div>
           </div>
         </div>
-      </footer>
+      </footer> */}
     </>
   );
 }
