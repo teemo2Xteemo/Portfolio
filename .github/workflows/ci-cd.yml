@@ -13,7 +13,7 @@ env:
   ECR_REPOSITORY: teemo/portfolio
   ECS_SERVICE: forwardport-service-8kfasmcl
   ECS_CLUSTER: genuine-eagle-4beg2s
-  CONTAINER_NAME: portfolio-container
+  CONTAINER_NAME: Portfolio
   ECS_TASK_DEFINITION: ./task-definition.json
   # S3_BUCKET: devops-portfolio-web-bucket
 
@@ -134,8 +134,7 @@ jobs:
       - name: Deploy Amazon ECS Task Definition
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
-          task-definition: task-definition.json # Local ECS task definition file path
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
           service: ${{ env.ECS_SERVICE }}
           cluster: ${{ env.ECS_CLUSTER }}
-          image: ${{ steps.build-image.outputs.image }}
           wait-for-service-stability: true
