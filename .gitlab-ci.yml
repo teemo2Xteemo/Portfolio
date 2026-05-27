@@ -97,8 +97,8 @@ deploy-to-aws:
     - export ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com"
     - IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}:${CI_COMMIT_SHA}"
     
-    # Inject the new image URI into the task definition
-    - jq --arg IMAGE "$IMAGE_URI" --arg NAME "$CONTAINER_NAME" '(.containerDefinitions[] | select(.name == $NAME)).image = $IMAGE' task-definition.json > task-definition-updated.json
+    # Inject the new image URI into the task definition and remove empty tags
+    - jq --arg IMAGE "$IMAGE_URI" --arg NAME "$CONTAINER_NAME" '(.containerDefinitions[] | select(.name == $NAME)).image = $IMAGE | if .tags == [] then del(.tags) else . end' task-definition.json > task-definition-updated.json
     
     # Register the new task definition
     - TASK_DEF=$(aws ecs register-task-definition --cli-input-json file://task-definition-updated.json)
