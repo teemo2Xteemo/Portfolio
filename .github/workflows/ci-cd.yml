@@ -9,11 +9,13 @@ on:
       - main
 
 env:
-  AWS_REGION: us-east-1
-  ECR_REPOSITORY: devops-portfolio
-  ECS_SERVICE: portfolio-service
-  ECS_CLUSTER: portfolio-cluster
-  S3_BUCKET: devops-portfolio-web-bucket
+  AWS_REGION: ap-southeast-1
+  ECR_REPOSITORY: teemo/portfolio
+  ECS_SERVICE: forwardport-service-8kfasmcl
+  ECS_CLUSTER: genuine-eagle-4beg2s
+  CONTAINER_NAME: portfolio-container
+  ECS_TASK_DEFINITION: ./task-definition.json
+  # S3_BUCKET: devops-portfolio-web-bucket
 
 jobs:
   lint-and-build:
@@ -49,41 +51,41 @@ jobs:
   # =============================================================
   # OPTION A: Deploy to AWS S3 & CloudFront (Static Web Hosting)
   # =============================================================
-  deploy-static-s3:
-    name: Deploy to S3 + CloudFront
-    needs: lint-and-build
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+  # deploy-static-s3:
+  #   name: Deploy to S3 + CloudFront
+  #   needs: lint-and-build
+  #   if: github.ref == 'refs/heads/main'
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout Code
+  #       uses: actions/checkout@v4
 
-      - name: Download Build Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: production-build
-          path: dist
+  #     - name: Download Build Artifacts
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: production-build
+  #         path: dist
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+  #     - name: Configure AWS Credentials
+  #       uses: aws-actions/configure-aws-credentials@v4
+  #       with:
+  #         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  #         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  #         aws-region: ${{ env.AWS_REGION }}
 
-      - name: Deploy to S3 Bucket
-        run: |
-          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} --delete
+  #     - name: Deploy to S3 Bucket
+  #       run: |
+  #         aws s3 sync dist/ s3://${{ env.S3_BUCKET }} --delete
 
-      - name: Invalidate CloudFront Cache
-        run: |
-          # Fetch distribution ID dynamically or from Secrets
-          CF_DIST_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?Aliases.Items[0]=='${{ secrets.DOMAIN_NAME }}'].Id" --output text)
-          if [ -n "$CF_DIST_ID" ] && [ "$CF_DIST_ID" != "None" ]; then
-            aws cloudfront create-invalidation --distribution-id $CF_DIST_ID --paths "/*"
-          else
-            echo "CloudFront distribution not found or DOMAIN_NAME secret not set. Skipping cache invalidation."
-          fi
+  #     - name: Invalidate CloudFront Cache
+  #       run: |
+  #         # Fetch distribution ID dynamically or from Secrets
+  #         CF_DIST_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?Aliases.Items[0]=='${{ secrets.DOMAIN_NAME }}'].Id" --output text)
+  #         if [ -n "$CF_DIST_ID" ] && [ "$CF_DIST_ID" != "None" ]; then
+  #           aws cloudfront create-invalidation --distribution-id $CF_DIST_ID --paths "/*"
+  #         else
+  #           echo "CloudFront distribution not found or DOMAIN_NAME secret not set. Skipping cache invalidation."
+  #         fi
 
   # =============================================================
   # OPTION B: Deploy as Container to AWS ECS
@@ -94,6 +96,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
+
       - name: Checkout Code
         uses: actions/checkout@v4
 
@@ -119,6 +122,14 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Fill in the new image ID in the Amazon ECS task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ${{ env.ECS_TASK_DEFINITION }}
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ steps.build-image.outputs.image }}
 
       - name: Deploy Amazon ECS Task Definition
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2

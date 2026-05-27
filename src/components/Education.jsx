@@ -1,4 +1,3 @@
-import React from 'react';
 import { GraduationCap, Heart, CheckCircle2, Globe } from 'lucide-react';
 
 export default function Education({ education, traits, interests }) {

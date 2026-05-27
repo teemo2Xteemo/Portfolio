@@ -24,8 +24,8 @@ FROM nginx:stable-alpine
 
 # Set labels for OCI image specifications
 LABEL org.opencontainers.image.title="Dinh Cong Duyen - DevOps Portfolio" \
-      org.opencontainers.image.description="Production container serving static React portfolio app" \
-      org.opencontainers.image.version="1.0.0"
+  org.opencontainers.image.description="Production container serving static React portfolio app" \
+  org.opencontainers.image.version="1.0.0"
 
 # Remove default nginx static assets
 RUN rm -rf /usr/share/nginx/html/*

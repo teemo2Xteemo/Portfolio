@@ -1,4 +1,3 @@
-import React from 'react';
 import { Cpu, Server, Database, GitBranch, Share2, Award, Zap } from 'lucide-react';
 
 const getCategoryIcon = (category) => {
