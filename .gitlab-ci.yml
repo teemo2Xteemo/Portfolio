@@ -5,8 +5,11 @@ stages:
   - deploy
 
 variables:
-  AWS_DEFAULT_REGION: us-east-1
-  IMAGE_NAME: devops-portfolio
+  AWS_DEFAULT_REGION: ap-southeast-1
+  ECR_REPOSITORY: teemo/portfolio
+  ECS_SERVICE: forwardport-service-8kfasmcl
+  ECS_CLUSTER: genuine-eagle-4beg2s
+  CONTAINER_NAME: Portfolio
   DOCKER_TLS_CERTDIR: "/certs"
 
 cache:
@@ -45,7 +48,7 @@ building:
     expire_in: 1 week
 
 # ==========================================
-# Release (Docker Build & Push) Stage
+# Release (Docker Build & Push to ECR) Stage
 # ==========================================
 docker-release:
   stage: release
@@ -60,26 +63,47 @@ docker-release:
     DOCKER_TLS_VERIFY: 1
     DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
   before_script:
-    # Example registry login (GitLab container registry)
-    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+    # Install AWS CLI to interact with ECR
+    - apk add --no-cache aws-cli
+    # Retrieve AWS Account ID dynamically
+    - export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+    - export ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com"
+    # Login to AWS ECR
+    - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
   script:
-    - docker build -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" -t "$CI_REGISTRY_IMAGE:latest" .
-    - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
-    - docker push "$CI_REGISTRY_IMAGE:latest"
+    - IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}"
+    - docker build -t "$IMAGE_URI:$CI_COMMIT_SHA" -t "$IMAGE_URI:latest" .
+    - docker push "$IMAGE_URI:$CI_COMMIT_SHA"
+    - docker push "$IMAGE_URI:latest"
   only:
     - main
 
 # ==========================================
-# Deploy Stage
+# Deploy Stage (Update ECS)
 # ==========================================
 deploy-to-aws:
   stage: deploy
   image: amazon/aws-cli:latest
   needs:
     - docker-release
+  before_script:
+    # Install jq to manipulate task-definition.json
+    - yum install -y jq
   script:
     - echo "Deploying application to AWS ECS..."
-    # Configures ECS deployment
-    - aws ecs update-service --cluster portfolio-cluster --service portfolio-service --force-new-deployment
+    - export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+    - export ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com"
+    - IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}:${CI_COMMIT_SHA}"
+    
+    # Inject the new image URI into the task definition
+    - jq --arg IMAGE "$IMAGE_URI" --arg NAME "$CONTAINER_NAME" '(.containerDefinitions[] | select(.name == $NAME)).image = $IMAGE' task-definition.json > task-definition-updated.json
+    
+    # Register the new task definition
+    - TASK_DEF=$(aws ecs register-task-definition --cli-input-json file://task-definition-updated.json)
+    - REVISION=$(echo $TASK_DEF | jq -r '.taskDefinition.taskDefinitionArn')
+    
+    # Update the ECS service with the new task definition
+    - aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE --task-definition $REVISION --force-new-deployment
+    - echo "Deployment initiated for $REVISION"
   only:
     - main
